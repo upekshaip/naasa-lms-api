@@ -1,0 +1,427 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Gender {
+  m
+  f
+  o
+}
+
+enum UserRoleStatus {
+  active
+  deleted
+}
+
+enum UserDevice {
+  DESKTOP
+  MOBILE
+  TABLET
+  CONSOLE
+  SMARTTV
+  WEARABLE
+  EMBEDDED
+}
+
+model User {
+  userId       Int       @id @default(autoincrement())
+  name         String?   @db.VarChar(50)
+  password     String?    @db.VarChar(255) // if null then password is expired
+  email        String    @unique @db.VarChar(100)
+  phone        String?   @db.VarChar(15)
+  gender       Gender?
+  
+  refreshToken String?   @db.Text
+  lastLoginAt   DateTime?
+  device    UserDevice?
+
+  dob          DateTime? @db.Date
+  address      String?   @db.VarChar(255)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  isTeacher Boolean @default(false)
+  isStudent Boolean @default(false)
+  isAdmin   Boolean @default(false)
+
+  teacherProfile TeacherProfile?
+  studentProfile StudentProfile?
+  adminProfile   AdminProfile?
+
+  isBlocked Boolean @default(false)
+  notifications Notification[]
+}
+
+model TeacherProfile {
+  teacherId              Int                      @id @default(autoincrement())
+  userId                 Int?                     @unique
+  user                   User?                    @relation(fields: [userId], references: [userId], onDelete: SetNull)
+  status                 UserRoleStatus           @default(active)
+  classes                Class[]
+  pricePlans             ClassPricePlan[]
+  createdClasses         Class[]                  @relation("CreatedClasses")
+  createdClassPricePlans ClassPricePlan[]         @relation("CreatedClassPricePlans")
+  classToClassPricePlans ClassPricePlanConnection[]
+  classEnrollments       ClassEnrollment[]
+  media                  Media[]
+  mediaFolders           MediaFolder[]
+  videos                 Video[]
+  // without approval (admin priviladges)
+  canCreatePlan          Boolean                  @default(false)
+  canEditPlan            Boolean                  @default(false)
+  canBroadcastMessage    Boolean                  @default(false)
+  canBroadcastSMS        Boolean                  @default(false)
+
+  maxMonthlyClasslimit   Int                      @default(5)
+  maxOnetimeClasslimit   Int                      @default(10)
+  maxPricePlanLimit      Int                      @default(10)
+  maxVideoStorageLimit   Float                    @default(0.5) // in GB
+  maxMediaStorageLimit   Float                    @default(0.5) // in GB
+
+  subscriptionStartDate  DateTime?
+  subscriptionEndDate    DateTime?
+  subscription           String?                  @db.VarChar(50)
+}
+
+model StudentProfile {
+  studentId        Int                 @id @default(autoincrement())
+  userId           Int?                @unique
+  user             User?               @relation(fields: [userId], references: [userId], onDelete: SetNull)
+  classEnrollments ClassEnrollment[]
+  studentPayments  EnrollmentPayment[]
+  accessRequests   AccessRequest[]
+  status          UserRoleStatus      @default(active)
+}
+
+model AdminProfile {
+  adminId                 Int              @id @default(autoincrement())
+  userId                  Int?             @unique
+  user                    User?            @relation(fields: [userId], references: [userId], onDelete: SetNull)
+  approvedClassPricePlans ClassPricePlan[] @relation("ApprovedClassPricePlans")
+  status                  UserRoleStatus   @default(active)
+}
+
+enum isAdminApproved {
+  approved
+  pending
+  rejected
+}
+
+enum ClassStatus {
+  active
+  inactive
+  archived
+}
+
+enum ClassType {
+  monthly
+  onetime
+}
+
+model ClassGroup {
+  id          Int     @id @default(autoincrement())
+  name        String  @db.VarChar(255)
+  description String  @db.VarChar(255)
+  slug        String  @unique @default(cuid())
+  classes     Class[]
+}
+
+model Class {
+  id                      Int                        @id @default(autoincrement())
+  name                    String                     @db.VarChar(255)
+  slug                    String                     @unique @default(cuid())
+  description             String                     @db.Text
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+  teacherId               Int?
+  creatorId               Int?
+  createdBy               TeacherProfile?            @relation("CreatedClasses", fields: [creatorId], references: [teacherId], onDelete: SetNull)
+  teacher                 TeacherProfile?            @relation(fields: [teacherId], references: [teacherId], onDelete: SetNull)
+  status                  ClassStatus                @default(active)
+  classType               ClassType                  @default(onetime)
+  classMonth              Int?
+  classgroupId            Int?
+  color                   String?                    @db.VarChar(9)
+  classgroup              ClassGroup?                @relation(fields: [classgroupId], references: [id])
+  isActiveForever         Boolean                    @default(false)
+  firstSectionFreeApplied Boolean                    @default(true)
+  isFeatured              Boolean                    @default(false)
+  classPricePlans         ClassPricePlanConnection[]
+  contents                ClassContent[]
+
+  @@index([teacherId])
+  @@index([creatorId])
+  @@index([classgroupId])
+  @@index([status])
+  @@index([classType])
+}
+
+enum ContentType {
+  video
+  hls
+  media
+  url
+  live
+}
+
+model ClassContent {
+  contentId   Int         @id @default(autoincrement())
+  classId     Int
+  class       Class       @relation(fields: [classId], references: [id])
+  title       String      @db.VarChar(255)
+  description String      @db.Text
+  type        ContentType
+  contentUrl  String?     @db.Text
+  mediaId     Int?
+  media       Media?      @relation(fields: [mediaId], references: [mediaId])
+  videoId     Int?
+  video       Video?      @relation(fields: [videoId], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  sectionId   Int         @default(1)
+  orderId   Int         @default(1)
+  
+
+  @@index([classId])
+  @@index([mediaId]) 
+}
+
+enum ClassPricePlanStatus {
+  pending
+  active
+  archived
+}
+
+model ClassPricePlanConnection {
+  id          Int            @id @default(autoincrement())
+  classId     Int
+  pricePlanId Int
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  teacherId   Int?
+  teacher     TeacherProfile? @relation(fields: [teacherId], references: [teacherId], onDelete: SetNull)
+  class       Class          @relation(fields: [classId], references: [id])
+  pricePlan   ClassPricePlan @relation(fields: [pricePlanId], references: [id])
+
+  @@unique([classId, pricePlanId]) 
+  @@index([classId])
+  @@index([pricePlanId])
+  @@index([teacherId])
+}
+
+model ClassPricePlan {
+  id                          Int                        @id @default(autoincrement())
+  name                        String                     @db.VarChar(255)
+  description                 String                     @db.Text
+  classes                     ClassPricePlanConnection[]
+  status                      ClassPricePlanStatus       @default(pending)
+  slug                        String                     @unique @default(cuid())
+  price                       Float
+  duration                    Int                        @default(35)
+  color                       String?                    @db.VarChar(9)
+  
+  teacherId                   Int?
+  teacher                     TeacherProfile?            @relation(fields: [teacherId], references: [teacherId], onDelete: SetNull)
+  creatorId                   Int?
+  createdBy                   TeacherProfile?            @relation("CreatedClassPricePlans", fields: [creatorId], references: [teacherId], onDelete: SetNull)
+  
+  isAdminApproved             isAdminApproved            @default(pending)
+  approvedAdminId             Int?
+  approvedByAdmin             AdminProfile?              @relation("ApprovedClassPricePlans", fields: [approvedAdminId], references: [adminId], onDelete: SetNull)
+  
+  promocode                   String?                    @db.VarChar(255)
+  promoDiscountPercentage     Float                      @default(0)
+  isPromoActive               Boolean                    @default(false)
+  
+  earlyBirdMaxCount           Int                        @default(0)
+  earlyBirdDiscountPercentage Float                      @default(0)
+  isEarlyBirdActive           Boolean                    @default(false)
+
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+
+  classEnrollments            ClassEnrollment[]
+  accessRequests              AccessRequest[]
+
+  @@index([teacherId]) 
+  @@index([creatorId])
+  @@index([approvedAdminId])
+  @@index([status])
+  @@index([isAdminApproved])
+}
+
+enum PaymentStatus {
+  pending
+  completed
+  failed
+}
+
+enum PaymentType {
+  offline
+  online
+}
+
+model ClassEnrollment {
+  id                      Int                @id @default(autoincrement())
+  studentId               Int
+  student                 StudentProfile     @relation(fields: [studentId], references: [studentId])
+  isPromoApplied          Boolean            @default(false)
+  promoCodeUsed           String?            @db.VarChar(255)
+  
+  isEarlyBirdApplied      Boolean            @default(false)
+  earlyBirdNumber         Int?
+  
+  classPricePlanId        Int
+  classPricePlan          ClassPricePlan     @relation(fields: [classPricePlanId], references: [id])
+
+  teacherId               Int?
+  teacher                 TeacherProfile?    @relation(fields: [teacherId], references: [teacherId], onDelete: SetNull)
+
+  price                   Float
+  earlyBirdDiscountAmount Float              @default(0)
+  promoDiscountAmount     Float              @default(0)
+  purchasedAmount         Float              @default(0)
+
+  expiresAt               DateTime
+  paymentId               Int?
+  payment                 EnrollmentPayment? @relation(fields: [paymentId], references: [paymentId], onDelete: SetNull)
+
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+
+  @@index([studentId])
+  @@index([classPricePlanId])
+  @@index([teacherId])
+  @@index([paymentId]) 
+}
+
+model EnrollmentPayment {
+  paymentId       Int               @id @default(autoincrement())
+  paymentSlug     String            @unique @default(cuid())
+
+  enrollments     ClassEnrollment[]
+
+  studentId       Int
+  student         StudentProfile    @relation(fields: [studentId], references: [studentId])
+  
+  fullPaymentAmount Float
+  discountAmount    Float             @default(0)
+  purchasedAmount   Float             @default(0)
+
+  paymentDate     DateTime          @default(now())
+  paymentStatus   PaymentStatus     @default(pending)
+  paymentType     PaymentType       @default(offline)
+  fileId          String?           @db.VarChar(255) // this will be null in 60 days, if not null we can get receipt
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([studentId]) 
+}
+
+model MediaFolder {
+  id        Int           @id @default(autoincrement())
+  name      String        @db.VarChar(255)
+  parentId  Int?
+  parent    MediaFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  MediaFolder[] @relation("FolderHierarchy")
+  teacherId Int
+  teacher   TeacherProfile @relation(fields: [teacherId], references: [teacherId])
+  media     Media[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teacherId])
+  @@index([parentId])
+}
+
+enum MediaDrive {
+  g1
+  r2
+  s3
+}
+
+model Media {
+  mediaId       Int            @id @default(autoincrement())
+  fileId        String         @db.VarChar(255)
+  fileType      String         @db.VarChar(20)
+  fileName      String         @db.Text
+  mimetype      String         @db.VarChar(255)
+  fileSize      BigInt         @default(0)
+  MediaDrive    MediaDrive
+  teacherId     Int
+  teacher       TeacherProfile @relation(fields: [teacherId], references: [teacherId])
+  classContents ClassContent[]
+  mediaFolderId Int?
+  mediaFolder   MediaFolder?   @relation(fields: [mediaFolderId], references: [id], onDelete: Cascade)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([teacherId]) 
+}
+
+enum VideoStatus {
+  processing
+  uploading
+  ready
+  failed
+  canceled
+}
+
+model Video {
+  id            Int            @id @default(autoincrement())
+  title         String         @db.VarChar(255)
+  videoId       String         @db.VarChar(255)
+  videoKey      String         @db.VarChar(255)
+  teacher       TeacherProfile @relation(fields: [teacherId], references: [teacherId])
+  teacherId     Int
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  status        VideoStatus    @default(processing)
+  classContents ClassContent[]
+
+  @@index([teacherId]) 
+}
+
+// if approved or rejected this record will be deleted
+// only pending status will be kept in this table
+model AccessRequest {
+  id          Int       @id @default(autoincrement())
+  studentId   Int
+  student     StudentProfile @relation(fields: [studentId], references: [studentId])
+  classPricePlanId Int
+  classPricePlan   ClassPricePlan @relation(fields: [classPricePlanId], references: [id])
+  promoCode    String?    @db.VarChar(255)
+  requestNote        String?    @db.Text
+  mimetype      String?    @db.VarChar(255)
+  fileId String? @db.VarChar(255)
+  createdAt   DateTime  @default(now())
+}
+
+// if user clears notifications, we will delete those records. so only active notifications will be kept in this table
+model Notification {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  user        User      @relation(fields: [userId], references: [userId])
+  url         String?   @db.VarChar(255)
+  title       String    @db.VarChar(255)
+  message     String    @db.Text
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  email     String    @unique @db.VarChar(100)
+  token     String    @unique @db.VarChar(255)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+}
