@@ -69,7 +69,7 @@ export const ALLOWED_RECIEPT_FILE_TYPES = [
   'application/pdf',
 ];
 
-export const INSTITUTION_NAME = 'Deamoz LMS';
+export const INSTITUTION_NAME = 'Naasa LMS';
 export const INSTITUTION_SUPPORT_EMAIL = 'support@deamoz.com';
 export const INSTITUTION_COURSES_URL =
   'https://class.deamoz.com/student/courses';
