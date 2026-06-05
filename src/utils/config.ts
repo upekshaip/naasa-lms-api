@@ -72,4 +72,4 @@ export const ALLOWED_RECIEPT_FILE_TYPES = [
 export const INSTITUTION_NAME = 'Naasa LMS';
 export const INSTITUTION_SUPPORT_EMAIL = 'support@deamoz.com';
 export const INSTITUTION_COURSES_URL =
-  'https://class.deamoz.com/student/courses';
+  'https://naasagampaha.com/student/courses';
