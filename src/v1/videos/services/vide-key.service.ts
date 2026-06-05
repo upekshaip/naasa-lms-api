@@ -101,7 +101,7 @@ export class VideoKeyService {
       httpOnly: true,
       secure: true,
       sameSite: 'lax',
-      domain: '.deamoz.com', // Set your domain here
+      domain: '.nasagampaha.com', // Set your domain here
       path: '/', // Only sends this cookie on requests to THIS specific video ID
       maxAge: 30 * 60 * 1000,
     });
