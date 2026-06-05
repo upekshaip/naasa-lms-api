@@ -46,10 +46,15 @@ export class VideoKeyAuthMiddleware implements NestMiddleware {
 
     // MANDATORY: Extra safety layers for both
     const referer = req.headers['referer'];
+    const allowedReferers = [
+      process.env.FRONTEND_URL,
+      'nasagampaha.com',
+      'deamoz.com',
+      'http://localhost:3001',
+    ].filter((value): value is string => Boolean(value));
     if (
       !referer ||
-      (!referer.includes('deamoz.com') &&
-        !referer.includes('http://localhost:3001'))
+      !allowedReferers.some((allowed) => referer.includes(allowed))
     ) {
       throw new HttpException(
         'Forbidden: Invalid Referer' + `(Received: ${referer})`,
