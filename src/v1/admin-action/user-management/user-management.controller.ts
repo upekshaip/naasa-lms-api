@@ -19,6 +19,7 @@ import { UpdateUserPasswordDto } from './dto/update-user-password.dto.js';
 import { UpdateTeacherPermissionDto } from './dto/update-teacher-permission.dto.js';
 import { UpdateUserRolesDto } from './dto/update-user-roles.dto.js';
 import { UpdateUserBlockDto } from './dto/update-user-block.dto.js';
+import { ActiveUserFilterDto } from './dto/active-student-filter.dto.js';
 
 @Controller('user-management')
 @UseGuards(new RolesGuard(['isAdmin']))
@@ -33,6 +34,15 @@ export class UserManagementController {
   @Get('users/stats')
   async getStudentStats(@Req() req: Request) {
     return await this.userManagementService.getStudentStats();
+  }
+
+  // get all active users (need )
+  @Get('users/active')
+  async getActiveUsers(
+    @Req() req: Request,
+    @Query() query: ActiveUserFilterDto,
+  ) {
+    return await this.userManagementService.getActiveUsers(req, query);
   }
 
   @Get('users/:userId')

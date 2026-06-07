@@ -9,6 +9,7 @@ import { UpdateUserPasswordDto } from '../dto/update-user-password.dto.js';
 import { UpdateUserRolesDto } from '../dto/update-user-roles.dto.js';
 import { UpdateUserBlockDto } from '../dto/update-user-block.dto.js';
 import { UpdateUserDto } from '../dto/update-user.dto.js';
+import { ActiveUserFilterDto } from '../dto/active-student-filter.dto.js';
 
 @Injectable()
 export class UserManagementService {
@@ -125,6 +126,69 @@ export class UserManagementService {
 
     if (isBlocked !== undefined) {
       whereClause.isBlocked = String(isBlocked) === 'true';
+    }
+
+    if (search) {
+      whereClause.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [students, totalCount] = await Promise.all([
+      this.db.user.findMany({
+        where: whereClause,
+        skip: offset,
+        take: limit,
+        orderBy: {
+          createdAt: 'desc',
+        },
+        select: this.userSelectCommonFields,
+      }),
+      this.db.user.count({
+        where: whereClause,
+      }),
+    ]);
+
+    const totalPages = Math.ceil(totalCount / limit);
+
+    return {
+      data: students,
+      meta: {
+        totalItems: totalCount,
+        itemCount: students.length,
+        itemsPerPage: limit,
+        totalPages: totalPages,
+        currentPage: page,
+      },
+    };
+  }
+  async getActiveUsers(req: Request, query: ActiveUserFilterDto) {
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const search = query.search ? query.search.trim() : null;
+    const userType = query.userType;
+    const duration = query.duration || 1;
+
+    const now = new Date();
+    const durationAgo = new Date(
+      now.getTime() - 24 * 60 * 60 * 1000 * duration,
+    );
+
+    const whereClause: Prisma.UserWhereInput = {
+      isStudent: true,
+      lastLoginAt: { gte: durationAgo },
+    };
+    if (userType) {
+      if (userType === 'teacher') {
+        whereClause.isTeacher = true;
+      } else if (userType === 'admin') {
+        whereClause.isAdmin = true;
+      } else {
+        whereClause.isStudent = true;
+      }
     }
 
     if (search) {
