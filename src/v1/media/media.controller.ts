@@ -47,8 +47,13 @@ export class MediaController {
   async createFolder(
     @Req() req: Request,
     @Body() createFolderDto: CreateFolderDto,
+    @Query('teacherId') teacherId?: string,
   ) {
-    return await this.mediaFolderService.createFolder(req, createFolderDto);
+    return await this.mediaFolderService.createFolder(
+      req,
+      createFolderDto,
+      teacherId,
+    );
   }
 
   @Patch('folders/:id/rename')
@@ -57,8 +62,14 @@ export class MediaController {
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Body() renameFolderDto: RenameFolderDto,
+    @Query('teacherId') teacherId?: string,
   ) {
-    return await this.mediaFolderService.renameFolder(req, id, renameFolderDto);
+    return await this.mediaFolderService.renameFolder(
+      req,
+      id,
+      renameFolderDto,
+      teacherId,
+    );
   }
 
   @Patch('folders/:id/move')
@@ -67,8 +78,14 @@ export class MediaController {
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
     @Body() moveFolderDto: MoveFolderDto,
+    @Query('teacherId') teacherId?: string,
   ) {
-    return await this.mediaFolderService.moveFolder(req, id, moveFolderDto);
+    return await this.mediaFolderService.moveFolder(
+      req,
+      id,
+      moveFolderDto,
+      teacherId,
+    );
   }
 
   @Delete('folders/:id')
@@ -76,8 +93,9 @@ export class MediaController {
   async deleteFolder(
     @Req() req: Request,
     @Param('id', ParseIntPipe) id: number,
+    @Query('teacherId') teacherId?: string,
   ) {
-    return await this.mediaFolderService.deleteFolder(req, id);
+    return await this.mediaFolderService.deleteFolder(req, id, teacherId);
   }
 
   // ------------- FILE ACCESS ENDPOINTS ------------- //
@@ -99,12 +117,14 @@ export class MediaController {
     @Req() req: Request,
     @UploadedFile() file: Express.Multer.File,
     @Body('folderId') folderId?: string,
+    @Query('teacherId') teacherId?: string,
   ) {
     const parsedFolderId = folderId ? parseInt(folderId, 10) : undefined;
     return await this.mediaFileService.uploadLessonFile(
       req,
       file,
       parsedFolderId,
+      teacherId,
     );
   }
 
@@ -114,8 +134,14 @@ export class MediaController {
     @Req() req: Request,
     @Param('fileId') fileId: string,
     @Body('newName') newName: string,
+    @Query('teacherId') teacherId?: string,
   ) {
-    return await this.mediaFileService.renameFile(req, fileId, newName);
+    return await this.mediaFileService.renameFile(
+      req,
+      fileId,
+      newName,
+      teacherId,
+    );
   }
 
   @Patch('files/:fileId/move')
@@ -124,14 +150,24 @@ export class MediaController {
     @Req() req: Request,
     @Param('fileId') fileId: string,
     @Body() moveDto: MoveFolderDto, // Reusing the same DTO since it just validates { parentId }
+    @Query('teacherId') teacherId?: string,
   ) {
-    return await this.mediaFileService.moveFile(req, fileId, moveDto.parentId);
+    return await this.mediaFileService.moveFile(
+      req,
+      fileId,
+      moveDto.parentId,
+      teacherId,
+    );
   }
 
   @Delete('files/:fileId')
   @UseGuards(new RolesGuard(['isTeacher', 'isAdmin']))
-  async deleteFile(@Req() req: Request, @Param('fileId') fileId: string) {
-    return await this.mediaFileService.deleteFile(req, fileId);
+  async deleteFile(
+    @Req() req: Request,
+    @Param('fileId') fileId: string,
+    @Query('teacherId') teacherId?: string,
+  ) {
+    return await this.mediaFileService.deleteFile(req, fileId, teacherId);
   }
 
   // ------------- RECEIPT FILE ENDPOINTS ------------- //

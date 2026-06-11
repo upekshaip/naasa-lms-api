@@ -20,6 +20,8 @@ import { FilterPricePlansService } from './services/filter-price-plans.service.j
 import { QueryTeacherPricePlansDto } from './dto/query-teacher-price-plans.dto.js';
 import { StudentPricePlansServices } from './services/student-price-plans.service.js';
 import { QueryStudentPlansFilterDto } from './dto/query-student-plans-filter.js';
+import { ApprovePricePlanDto } from './dto/approve-price-plan.dto.js';
+import { QueryAdminPricePlansDto } from './dto/query-admin-price-plans.dto.js';
 
 @Controller('price-plans')
 export class PricePlansController {
@@ -41,11 +43,18 @@ export class PricePlansController {
     );
   }
 
-  // @Get()
-  // @UseGuards(new RolesGuard(['isTeacher', 'isAdmin', 'isStudent']))
-  // async findAll(@Query() query: GetAllPricePlanDto) {
-  //   return await this.pricePlansService.findAll(query);
-  // }
+  // admin: paginated list of every price plan across all teachers (approval workflow)
+  @Get()
+  @UseGuards(new RolesGuard(['isAdmin']))
+  async getAllForAdmin(
+    @Req() req: Request,
+    @Query() query: QueryAdminPricePlansDto,
+  ) {
+    return await this.filterPricePlansService.getAllPricePlansGlobalForAdmin(
+      req,
+      query,
+    );
+  }
 
   // teacher
   @Get('all')
@@ -108,6 +117,21 @@ export class PricePlansController {
     return await this.pricePlansService.updatePricePlan(
       slug,
       updatePricePlanDto,
+      req,
+    );
+  }
+
+  // admin: approve or reject a teacher-submitted price plan
+  @Patch(':slug/approve')
+  @UseGuards(new RolesGuard(['isAdmin']))
+  async approve(
+    @Param('slug') slug: string,
+    @Body() approvePricePlanDto: ApprovePricePlanDto,
+    @Req() req: Request,
+  ) {
+    return await this.pricePlansService.approvePricePlan(
+      slug,
+      approvePricePlanDto,
       req,
     );
   }

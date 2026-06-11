@@ -7,6 +7,12 @@ export class QueryVideoDto {
   @IsString()
   search?: string;
 
+  // admin override: browse another teacher's videos
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  teacherId?: number;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

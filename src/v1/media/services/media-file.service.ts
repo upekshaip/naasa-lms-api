@@ -4,6 +4,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { R2Service } from '../../cloudfalre/services/r2.service.js';
 import { DatabaseService } from '../../../database/database.service.js';
 import { Request, Response } from 'express';
+import { resolveTeacherId } from '../../../utils/effective-teacher.js';
 
 @Injectable()
 export class MediaFileService {
@@ -131,24 +132,48 @@ export class MediaFileService {
     req: Request,
     file: Express.Multer.File,
     folderId?: number,
+    overrideTeacherId?: string,
   ) {
-    if (!req.teacherId)
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+    const teacherId = resolveTeacherId(req, overrideTeacherId);
 
     if (folderId) {
       const folder = await this.db.mediaFolder.findUnique({
         where: { id: folderId },
       });
-      if (!folder || folder.teacherId !== req.teacherId) {
+      if (!folder || folder.teacherId !== teacherId) {
         throw new HttpException('Invalid folder', HttpStatus.FORBIDDEN);
       }
+    }
+
+    // 0. Enforce the teacher's media storage limit before uploading
+    const teacher = await this.db.teacherProfile.findUnique({
+      where: { teacherId: teacherId },
+      select: { maxMediaStorageLimit: true },
+    });
+    if (!teacher) {
+      throw new HttpException(
+        'Teacher profile not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    const usage = await this.db.media.aggregate({
+      _sum: { fileSize: true },
+      where: { teacherId: teacherId },
+    });
+    const usedBytes = usage._sum.fileSize ? Number(usage._sum.fileSize) : 0;
+    const limitBytes = teacher.maxMediaStorageLimit * 1024 * 1024 * 1024;
+    if (usedBytes + file.size > limitBytes) {
+      throw new HttpException(
+        `Uploading this file would exceed your media storage limit (${teacher.maxMediaStorageLimit} GB). Please contact an admin to increase it.`,
+        HttpStatus.FORBIDDEN,
+      );
     }
 
     // 1. Generate the unique filename
     const uniqueName = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
 
     // 2. Build the exact R2 key using the prefix
-    const r2Key = this.r2Service.createContentPath(uniqueName, req.teacherId);
+    const r2Key = this.r2Service.createContentPath(uniqueName, teacherId);
 
     // 3. Upload using the full path
     await this.r2Service.uploadBuffer(file.buffer, r2Key, file.mimetype);
@@ -163,19 +188,23 @@ export class MediaFileService {
         mimetype: file.mimetype,
         fileSize: BigInt(file.size),
         MediaDrive: 'r2',
-        teacherId: req.teacherId,
+        teacherId: teacherId,
         mediaFolderId: folderId || null,
       },
     });
   }
 
   // --- FILE RENAME LOGIC ---
-  async renameFile(req: Request, fileId: string, newName: string) {
-    if (!req.teacherId)
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+  async renameFile(
+    req: Request,
+    fileId: string,
+    newName: string,
+    overrideTeacherId?: string,
+  ) {
+    const teacherId = resolveTeacherId(req, overrideTeacherId);
 
     const media = await this.db.media.findFirst({
-      where: { fileId: fileId, teacherId: req.teacherId },
+      where: { fileId: fileId, teacherId: teacherId },
     });
 
     if (!media) throw new HttpException('File not found', HttpStatus.NOT_FOUND);
@@ -188,14 +217,17 @@ export class MediaFileService {
   }
 
   // --- FILE MOVE LOGIC ---
-  async moveFile(req: Request, fileId: string, parentId?: number | null) {
-    if (!req.teacherId) {
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
-    }
+  async moveFile(
+    req: Request,
+    fileId: string,
+    parentId?: number | null,
+    overrideTeacherId?: string,
+  ) {
+    const teacherId = resolveTeacherId(req, overrideTeacherId);
 
     // 1. Verify the file exists and belongs to the teacher
     const media = await this.db.media.findFirst({
-      where: { fileId: fileId, teacherId: req.teacherId },
+      where: { fileId: fileId, teacherId: teacherId },
     });
 
     if (!media) {
@@ -208,7 +240,7 @@ export class MediaFileService {
         where: { id: parentId },
       });
 
-      if (!targetFolder || targetFolder.teacherId !== req.teacherId) {
+      if (!targetFolder || targetFolder.teacherId !== teacherId) {
         throw new HttpException(
           'Target folder not found or unauthorized',
           HttpStatus.NOT_FOUND,
@@ -224,12 +256,11 @@ export class MediaFileService {
   }
 
   // --- FILE DELETE LOGIC ---
-  async deleteFile(req: Request, fileId: string) {
-    if (!req.teacherId)
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+  async deleteFile(req: Request, fileId: string, overrideTeacherId?: string) {
+    const teacherId = resolveTeacherId(req, overrideTeacherId);
 
     const media = await this.db.media.findFirst({
-      where: { fileId: fileId, teacherId: req.teacherId },
+      where: { fileId: fileId, teacherId: teacherId },
     });
 
     if (!media) throw new HttpException('File not found', HttpStatus.NOT_FOUND);

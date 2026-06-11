@@ -45,8 +45,14 @@ export class VideosController {
     @Body() renameVideoDto: RenameVideoDto,
     @Req() req: Request,
     @Param('videoId') videoId: string,
+    @Query('teacherId') teacherId?: string,
   ) {
-    return this.videosService.renameVideo(req, videoId, renameVideoDto);
+    return this.videosService.renameVideo(
+      req,
+      videoId,
+      renameVideoDto,
+      teacherId,
+    );
   }
 
   // get all videos
@@ -76,7 +82,11 @@ export class VideosController {
 
   @Delete(':videoId')
   @UseGuards(new RolesGuard(['isTeacher', 'isAdmin']))
-  async deleteVideo(@Param('videoId') videoId: string, @Req() req: Request) {
-    return await this.videosService.deleteVideo(videoId, req);
+  async deleteVideo(
+    @Param('videoId') videoId: string,
+    @Req() req: Request,
+    @Query('teacherId') teacherId?: string,
+  ) {
+    return await this.videosService.deleteVideo(videoId, req, teacherId);
   }
 }

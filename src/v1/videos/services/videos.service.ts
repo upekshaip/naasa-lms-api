@@ -7,6 +7,7 @@ import { $Enums, Prisma } from '../../../../generated/prisma/client.js';
 import { RenameVideoDto } from '../dto/rename-video.dto.js';
 import { QueryVideoDto } from '../dto/query-video.dto.js';
 import { R2Service } from '../../cloudfalre/services/r2.service.js';
+import { resolveTeacherId } from '../../../utils/effective-teacher.js';
 
 @Injectable()
 export class VideosService {
@@ -16,13 +17,7 @@ export class VideosService {
   ) {}
 
   async getVideos(req: Request, query: QueryVideoDto) {
-    // 1. Authorization Check
-    if (!req.teacherId) {
-      throw new HttpException(
-        'Only teachers can access videos',
-        HttpStatus.FORBIDDEN,
-      );
-    }
+    const teacherId = resolveTeacherId(req, query.teacherId);
 
     // 2. Pagination & Search Prep
     const page = query.page || 1;
@@ -31,7 +26,7 @@ export class VideosService {
 
     // Define the where clause once to reuse it for both query and count
     const whereClause: Prisma.VideoWhereInput = {
-      teacherId: req.teacherId,
+      teacherId: teacherId,
       ...(query.search && {
         title: {
           contains: query.search,
@@ -141,12 +136,10 @@ export class VideosService {
     return video.videoKey;
   }
 
-  async deleteVideo(videoId: string, req: Request) {
-    if (!req.teacherId) {
-      throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
-    }
+  async deleteVideo(videoId: string, req: Request, overrideTeacherId?: string) {
+    const teacherId = resolveTeacherId(req, overrideTeacherId);
     const video = await this.db.video.findFirst({
-      where: { videoId: videoId, teacherId: req.teacherId },
+      where: { videoId: videoId, teacherId: teacherId },
       include: {
         classContents: {
           select: { contentId: true },
@@ -159,7 +152,7 @@ export class VideosService {
 
     // remove from clouflare R2 if exists
     await this.r2Service.deleteFilesWithPrefix(
-      `teacher/${req.teacherId}/video/${videoId}/`,
+      `teacher/${teacherId}/video/${videoId}/`,
     );
 
     if (video.classContents.length > 0) {
@@ -180,12 +173,11 @@ export class VideosService {
     req: Request,
     videoId: string,
     renameVideoDto: RenameVideoDto,
+    overrideTeacherId?: string,
   ) {
-    if (!req.teacherId) {
-      throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
-    }
+    const teacherId = resolveTeacherId(req, overrideTeacherId);
     const video = await this.db.video.findFirst({
-      where: { videoId: videoId, teacherId: req.teacherId },
+      where: { videoId: videoId, teacherId: teacherId },
     });
 
     if (!video)

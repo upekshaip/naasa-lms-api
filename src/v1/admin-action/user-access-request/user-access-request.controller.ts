@@ -12,6 +12,7 @@ import {
 import { UserAccessRequestService } from './services/user-access-request.service.js';
 import { RolesGuard } from '../../../guard/roles/roles.guard.js';
 import { QueryGetStudentRequestsDto } from './dto/query-get-student-requests.js';
+import { QueryAllRequestsDto } from './dto/query-all-requests.dto.js';
 import { TeacherResponseDto } from '../../access-request/dto/teacher-response.js';
 import { AccessRequestService } from '../../access-request/services/access-request.service.js';
 import type { Request } from 'express';
@@ -22,6 +23,13 @@ export class UserAccessRequestController {
     private readonly userAccessRequestService: UserAccessRequestService,
     private readonly accessRequestService: AccessRequestService,
   ) {}
+
+  // all pending access requests platform-wide (paginated)
+  @Get()
+  @UseGuards(new RolesGuard(['isAdmin']))
+  async getAllPendingRequests(@Query() query: QueryAllRequestsDto) {
+    return await this.userAccessRequestService.getAllPendingRequests(query);
+  }
 
   @Get('student/:studentId')
   @UseGuards(new RolesGuard(['isAdmin']))

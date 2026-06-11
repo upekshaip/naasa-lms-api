@@ -8,6 +8,12 @@ export class GetContentQueryDto {
   @IsInt()
   folderId?: number;
 
+  // admin override: browse another teacher's library
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  teacherId?: number;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
