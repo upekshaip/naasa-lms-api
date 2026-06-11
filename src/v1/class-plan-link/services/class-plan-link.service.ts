@@ -19,7 +19,8 @@ export class ClassPlanLinkService {
     if (!classData) {
       throw new HttpException('Class not found', HttpStatus.NOT_FOUND);
     }
-    if (classData.teacherId !== req.teacherId) {
+    // Teacher may only link their own class; admins can link for any teacher.
+    if (classData.teacherId !== req.teacherId && !req.isAdmin) {
       throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
     }
     // check if this is an array of strings
@@ -37,15 +38,10 @@ export class ClassPlanLinkService {
       where: { slug: { in: pricePlanSlugs } },
     });
 
-    // if teacher (for now)
-    if (req.isTeacher) {
+    // Teachers and admins can link; plans must belong to the class's teacher
+    // (for a teacher acting on their own class this is the same as req.teacherId).
+    if (req.isTeacher || req.isAdmin) {
       for (const pricePlan of pricePlans) {
-        if (pricePlan.teacherId !== req.teacherId) {
-          throw new HttpException(
-            'Some Price plans are not owned by teacher',
-            HttpStatus.BAD_REQUEST,
-          );
-        }
         if (classData.teacherId !== pricePlan.teacherId) {
           throw new HttpException(
             'Class and Price Plan teacher mismatch',

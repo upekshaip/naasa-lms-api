@@ -17,7 +17,7 @@ export class ClassContentsService {
 
   async getClassContent(req: Request, slug: string) {
     const classContent = await this.db.class.findFirst({
-      where: { slug: slug, teacherId: req.teacherId },
+      where: { slug: slug },
       include: {
         teacher: { select: { user: { select: { name: true } } } },
         contents: {
@@ -36,6 +36,10 @@ export class ClassContentsService {
       },
     });
     if (!classContent) {
+      throw new HttpException('Class not found', HttpStatus.NOT_FOUND);
+    }
+    // Teachers may only access their own class; admins can access any class.
+    if (!req.isAdmin && classContent.teacherId !== req.teacherId) {
       throw new HttpException('Class not found', HttpStatus.NOT_FOUND);
     }
     return classContent;

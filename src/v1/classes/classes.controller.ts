@@ -21,6 +21,7 @@ import { FilterClassesService } from './services/filter-classes.service.js';
 import { StudentClassesService } from './services/student-classes.service.js';
 import { QueryStudentFilterDto } from './dto/query-student-filter.dto.js';
 import { QueryStudentCourseFilterDto } from './dto/query-student-course-filter.dto.js';
+import { QueryAdminClassesDto } from './dto/query-admin-classes.dto.js';
 
 @Controller('classes')
 export class ClassesController {
@@ -63,6 +64,16 @@ export class ClassesController {
   @UseGuards(new RolesGuard(['isTeacher', 'isAdmin']))
   async getAllClassesforTeacher(@Req() req: Request) {
     return await this.filterClassesService.getAllClassesforTeacher(req);
+  }
+
+  // admin: paginated list of all classes across teachers (with stats)
+  @Get('admin/all')
+  @UseGuards(new RolesGuard(['isAdmin']))
+  async getAllClassesForAdmin(
+    @Req() req: Request,
+    @Query() query: QueryAdminClassesDto,
+  ) {
+    return await this.filterClassesService.getAllClassesForAdmin(req, query);
   }
 
   // student

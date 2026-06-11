@@ -6,6 +6,7 @@ import { GetContentQueryDto } from '../dto/query-teacher-content.js';
 import { RenameFolderDto } from '../dto/rename-folder.dto.js';
 import { MoveFolderDto } from '../dto/move-folder.dto.js';
 import { R2Service } from '../../cloudfalre/services/r2.service.js';
+import { resolveTeacherId } from '../../../utils/effective-teacher.js';
 
 @Injectable()
 export class MediaFolderService {
@@ -14,10 +15,12 @@ export class MediaFolderService {
     private readonly r2Service: R2Service,
   ) {}
 
-  async createFolder(req: Request, createFolderDto: CreateFolderDto) {
-    if (!req.teacherId) {
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
-    }
+  async createFolder(
+    req: Request,
+    createFolderDto: CreateFolderDto,
+    overrideTeacherId?: string,
+  ) {
+    const teacherId = resolveTeacherId(req, overrideTeacherId);
 
     const { name, parentId } = createFolderDto;
 
@@ -30,7 +33,7 @@ export class MediaFolderService {
 
     if (parentId) {
       const parentFolder = await this.db.mediaFolder.findUnique({
-        where: { id: parentId, teacherId: req.teacherId },
+        where: { id: parentId, teacherId: teacherId },
       });
 
       if (!parentFolder) {
@@ -39,7 +42,7 @@ export class MediaFolderService {
           HttpStatus.NOT_FOUND,
         );
       }
-      if (parentFolder.teacherId !== req.teacherId) {
+      if (parentFolder.teacherId !== teacherId) {
         throw new HttpException(
           'Unauthorized to create folder under this parent',
           HttpStatus.FORBIDDEN,
@@ -50,16 +53,14 @@ export class MediaFolderService {
       data: {
         name,
         parentId: parentId || null,
-        teacherId: req.teacherId,
+        teacherId: teacherId,
       },
     });
     return newFolder;
   }
 
   async getTeacherContent(req: Request, query: GetContentQueryDto) {
-    if (!req.teacherId) {
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
-    }
+    const teacherId = resolveTeacherId(req, query.teacherId);
 
     const page = query.page || 1;
     const limit = query.limit || 20;
@@ -72,7 +73,7 @@ export class MediaFolderService {
         where: { id: parentId },
       });
 
-      if (!parentFolder || parentFolder.teacherId !== req.teacherId) {
+      if (!parentFolder || parentFolder.teacherId !== teacherId) {
         throw new HttpException(
           'Folder not found or unauthorized',
           HttpStatus.NOT_FOUND,
@@ -84,7 +85,7 @@ export class MediaFolderService {
     const [folders, files, totalFolders, totalFiles] = await Promise.all([
       this.db.mediaFolder.findMany({
         where: {
-          teacherId: req.teacherId,
+          teacherId: teacherId,
           parentId: parentId, // Use parentId for folders
         },
         skip: skip,
@@ -93,7 +94,7 @@ export class MediaFolderService {
       }),
       this.db.media.findMany({
         where: {
-          teacherId: req.teacherId,
+          teacherId: teacherId,
           mediaFolderId: parentId, // Use mediaFolderId for files
         },
         skip: skip,
@@ -102,13 +103,13 @@ export class MediaFolderService {
       }),
       this.db.mediaFolder.count({
         where: {
-          teacherId: req.teacherId,
+          teacherId: teacherId,
           parentId: parentId,
         },
       }),
       this.db.media.count({
         where: {
-          teacherId: req.teacherId,
+          teacherId: teacherId,
           mediaFolderId: parentId,
         },
       }),
@@ -133,15 +134,19 @@ export class MediaFolderService {
     };
   }
 
-  async renameFolder(req: Request, folderId: number, dto: RenameFolderDto) {
-    if (!req.teacherId)
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+  async renameFolder(
+    req: Request,
+    folderId: number,
+    dto: RenameFolderDto,
+    overrideTeacherId?: string,
+  ) {
+    const teacherId = resolveTeacherId(req, overrideTeacherId);
 
     const folder = await this.db.mediaFolder.findUnique({
       where: { id: folderId },
     });
 
-    if (!folder || folder.teacherId !== req.teacherId) {
+    if (!folder || folder.teacherId !== teacherId) {
       throw new HttpException(
         'Folder not found or unauthorized',
         HttpStatus.NOT_FOUND,
@@ -154,9 +159,13 @@ export class MediaFolderService {
     });
   }
 
-  async moveFolder(req: Request, folderId: number, dto: MoveFolderDto) {
-    if (!req.teacherId)
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
+  async moveFolder(
+    req: Request,
+    folderId: number,
+    dto: MoveFolderDto,
+    overrideTeacherId?: string,
+  ) {
+    const teacherId = resolveTeacherId(req, overrideTeacherId);
 
     if (folderId === dto.parentId) {
       throw new HttpException(
@@ -169,7 +178,7 @@ export class MediaFolderService {
       where: { id: folderId },
     });
 
-    if (!folder || folder.teacherId !== req.teacherId) {
+    if (!folder || folder.teacherId !== teacherId) {
       throw new HttpException(
         'Folder not found or unauthorized',
         HttpStatus.NOT_FOUND,
@@ -181,7 +190,7 @@ export class MediaFolderService {
         where: { id: dto.parentId },
       });
 
-      if (!targetFolder || targetFolder.teacherId !== req.teacherId) {
+      if (!targetFolder || targetFolder.teacherId !== teacherId) {
         throw new HttpException(
           'Target folder not found or unauthorized',
           HttpStatus.NOT_FOUND,
@@ -218,17 +227,19 @@ export class MediaFolderService {
     return folderIds;
   }
 
-  async deleteFolder(req: Request, folderId: number) {
-    if (!req.teacherId) {
-      throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
-    }
+  async deleteFolder(
+    req: Request,
+    folderId: number,
+    overrideTeacherId?: string,
+  ) {
+    const teacherId = resolveTeacherId(req, overrideTeacherId);
 
     // 1. Verify the root folder exists and belongs to the teacher
     const folder = await this.db.mediaFolder.findUnique({
       where: { id: folderId },
     });
 
-    if (!folder || folder.teacherId !== req.teacherId) {
+    if (!folder || folder.teacherId !== teacherId) {
       throw new HttpException(
         'Folder not found or unauthorized',
         HttpStatus.NOT_FOUND,
@@ -249,7 +260,7 @@ export class MediaFolderService {
       // We use Promise.allSettled so if one file fails to delete, it doesn't stop the rest
       const deletePromises = mediaFiles.map((file) =>
         this.r2Service.deleteFile(
-          this.r2Service.createContentPath(file.fileId, req.teacherId!),
+          this.r2Service.createContentPath(file.fileId, teacherId),
         ),
       );
       await Promise.allSettled(deletePromises);

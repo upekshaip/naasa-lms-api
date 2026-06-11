@@ -47,6 +47,8 @@ import { UserEnrollmentModule } from './v1/admin-action/user-enrollment/user-enr
 import { UserEnrollmentController } from './v1/admin-action/user-enrollment/user-enrollment.controller.js';
 import { UserAccessRequestModule } from './v1/admin-action/user-access-request/user-access-request.module.js';
 import { UserAccessRequestController } from './v1/admin-action/user-access-request/user-access-request.controller.js';
+import { AdminAnalyticsModule } from './v1/admin-action/admin-analytics/admin-analytics.module.js';
+import { AdminAnalyticsController } from './v1/admin-action/admin-analytics/admin-analytics.controller.js';
 
 @Module({
   imports: [
@@ -75,6 +77,7 @@ import { UserAccessRequestController } from './v1/admin-action/user-access-reque
     UserManagementModule,
     UserEnrollmentModule,
     UserAccessRequestModule,
+    AdminAnalyticsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
@@ -118,6 +121,7 @@ export class AppModule implements NestModule {
         UserManagementController,
         UserEnrollmentController,
         UserAccessRequestController,
+        AdminAnalyticsController,
       );
   }
 }

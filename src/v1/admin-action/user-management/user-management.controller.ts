@@ -36,6 +36,18 @@ export class UserManagementController {
     return await this.userManagementService.getStudentStats();
   }
 
+  // quick teacher search for admin selectors
+  @Get('teachers/search')
+  async searchTeachers(@Query('q') q: string) {
+    return await this.userManagementService.searchTeachers(q);
+  }
+
+  // teacher summary by teacherId (admin inspection hub) — declared after /teachers/search
+  @Get('teachers/:teacherId')
+  async getTeacherById(@Param('teacherId', ParseIntPipe) teacherId: number) {
+    return await this.userManagementService.getTeacherById(teacherId);
+  }
+
   // get all active users (need )
   @Get('users/active')
   async getActiveUsers(

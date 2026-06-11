@@ -32,6 +32,39 @@ export class ClassesService {
     }
     // if teacher
     if (!req.isAdmin && req.isTeacher) {
+      // Enforce the teacher's class limit for this class type
+      const teacher = await this.db.teacherProfile.findUnique({
+        where: { teacherId: req.teacherId },
+        select: { maxMonthlyClasslimit: true, maxOnetimeClasslimit: true },
+      });
+      if (!teacher) {
+        throw new HttpException(
+          'Teacher profile not found',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+
+      const isMonthly = createClassDto.classType === 'monthly';
+      const limit = isMonthly
+        ? teacher.maxMonthlyClasslimit
+        : teacher.maxOnetimeClasslimit;
+
+      // Count non-archived classes of this type owned by the teacher
+      const currentCount = await this.db.class.count({
+        where: {
+          teacherId: req.teacherId,
+          classType: createClassDto.classType,
+          status: { not: 'archived' },
+        },
+      });
+
+      if (currentCount >= limit) {
+        throw new HttpException(
+          `You have reached your ${isMonthly ? 'monthly' : 'one-time'} class limit (${limit}). Please contact an admin to increase it.`,
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
       const newClassByTeacher = await this.db.class.create({
         data: {
           ...createClassDto,

@@ -4,6 +4,7 @@ import { UpdatePricePlanDto } from '../dto/update-price-plan.js';
 import { DatabaseService } from '../../../database/database.service.js';
 import { Request } from 'express';
 import { GetAllPricePlanDto } from '../dto/get-all-price-plans.js';
+import { ApprovePricePlanDto } from '../dto/approve-price-plan.dto.js';
 
 @Injectable()
 export class PricePlansService {
@@ -36,48 +37,44 @@ export class PricePlansService {
     }
     // if teacher
     if (!req.isAdmin && req.isTeacher) {
-      const hasPriviladgeToCreateWithoutApproval =
-        await this.db.teacherProfile.findUnique({
-          where: { teacherId: req.teacherId },
-          select: { canCreatePlan: true },
-        });
-
-      let isAdminAdminApproved: 'approved' | 'pending' = 'pending';
-      let approvedAdminId: number | undefined = undefined;
-      let status: 'active' | 'pending' = 'pending';
-
-      if (hasPriviladgeToCreateWithoutApproval?.canCreatePlan) {
-        const defaultAdmin = await this.db.user.findFirst({
-          where: {
-            email: process.env.DEFAULT_ADMIN_EMAIL,
-          },
-          select: {
-            adminProfile: {
-              select: {
-                adminId: true,
-              },
-            },
-          },
-        });
-        if (!defaultAdmin || !defaultAdmin.adminProfile) {
-          throw new HttpException(
-            'Default admin not found',
-            HttpStatus.INTERNAL_SERVER_ERROR,
-          );
-        }
-        isAdminAdminApproved = 'approved';
-        approvedAdminId = defaultAdmin.adminProfile.adminId;
-        status = 'active';
+      const teacher = await this.db.teacherProfile.findUnique({
+        where: { teacherId: req.teacherId },
+        select: { canCreatePlan: true, maxPricePlanLimit: true },
+      });
+      if (!teacher) {
+        throw new HttpException(
+          'Teacher profile not found',
+          HttpStatus.NOT_FOUND,
+        );
       }
 
+      // canCreatePlan gates plan creation entirely
+      if (!teacher.canCreatePlan) {
+        throw new HttpException(
+          'You do not have permission to create price plans. Please contact an admin.',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      // Enforce the teacher's price-plan limit (non-archived plans count)
+      const currentCount = await this.db.classPricePlan.count({
+        where: { teacherId: req.teacherId, status: { not: 'archived' } },
+      });
+      if (currentCount >= teacher.maxPricePlanLimit) {
+        throw new HttpException(
+          `You have reached your price plan limit (${teacher.maxPricePlanLimit}). Please contact an admin to increase it.`,
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      // Teacher-created plans always start pending → admin approval required
       const newPlanByTeacher = await this.db.classPricePlan.create({
         data: {
           ...createPricePlanDto,
           creatorId: req.teacherId,
           teacherId: req.teacherId,
-          isAdminApproved: isAdminAdminApproved,
-          approvedAdminId: approvedAdminId,
-          status: status,
+          isAdminApproved: 'pending',
+          status: 'pending',
         },
       });
       return newPlanByTeacher;
@@ -188,51 +185,82 @@ export class PricePlansService {
 
     // if teacher
     if (req.teacherId === existingPlan.teacherId) {
-      // teacher cannot update teacherId
-      const { teacherId, ...rest } = updatePricePlanDto;
-
-      let isAdminAdminApproved: 'approved' | 'pending' = 'pending';
-      let approvedAdminId: number | undefined = undefined;
-      let status: 'active' | 'pending' = 'pending';
-
-      if (existingPlan.teacher?.canEditPlan) {
-        const defaultAdmin = await this.db.user.findFirst({
-          where: {
-            email: process.env.DEFAULT_ADMIN_EMAIL,
-          },
-          select: {
-            adminProfile: {
-              select: {
-                adminId: true,
-              },
-            },
-          },
-        });
-        if (!defaultAdmin || !defaultAdmin.adminProfile) {
-          throw new HttpException(
-            'Default admin not found',
-            HttpStatus.INTERNAL_SERVER_ERROR,
-          );
-        }
-
-        isAdminAdminApproved = 'approved';
-        approvedAdminId = defaultAdmin.adminProfile.adminId;
-        status = 'active';
+      // canEditPlan gates plan editing entirely
+      if (!existingPlan.teacher?.canEditPlan) {
+        throw new HttpException(
+          'You do not have permission to edit price plans. Please contact an admin.',
+          HttpStatus.FORBIDDEN,
+        );
       }
+
+      // teacher cannot update teacherId; an edit sends the plan back for re-approval
+      const { teacherId, ...rest } = updatePricePlanDto;
 
       const updatedPlanByTeacher = await this.db.classPricePlan.update({
         where: { slug: slug },
         data: {
           ...rest,
-          approvedAdminId: approvedAdminId,
-          isAdminApproved: isAdminAdminApproved,
-          status: status,
+          isAdminApproved: 'pending',
+          status: 'pending',
+          approvedAdminId: null,
         },
       });
       return updatedPlanByTeacher;
     } else {
       throw new HttpException('Unauthorized', HttpStatus.UNAUTHORIZED);
     }
+  }
+
+  /**
+   * Admin approves or rejects a teacher-submitted price plan.
+   * approvedAdminId is taken from the authenticated admin (req.adminId), never the client.
+   * Approved plans become "active"; rejected plans are sent back to "pending" so the
+   * teacher can revise and resubmit. The owning teacher is notified either way.
+   */
+  async approvePricePlan(slug: string, dto: ApprovePricePlanDto, req: Request) {
+    if (!req.isAdmin || !req.adminId) {
+      throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
+    }
+
+    const existingPlan = await this.db.classPricePlan.findUnique({
+      where: { slug },
+      select: {
+        id: true,
+        name: true,
+        teacher: { select: { user: { select: { userId: true } } } },
+      },
+    });
+    if (!existingPlan) {
+      throw new HttpException('Price plan not found', HttpStatus.NOT_FOUND);
+    }
+
+    const isApproved = dto.response === 'approved';
+
+    const updatedPlan = await this.db.classPricePlan.update({
+      where: { slug },
+      data: {
+        isAdminApproved: dto.response,
+        approvedAdminId: req.adminId,
+        status: isApproved ? 'active' : 'pending',
+      },
+    });
+
+    // Notify the owning teacher
+    const teacherUserId = existingPlan.teacher?.user?.userId;
+    if (teacherUserId) {
+      await this.db.notification.create({
+        data: {
+          userId: teacherUserId,
+          title: 'Price Plan Review Update',
+          message: isApproved
+            ? `Your price plan "${existingPlan.name}" has been approved and is now active.`
+            : `Your price plan "${existingPlan.name}" was rejected. Please review and resubmit it.`,
+          url: `/teacher/price-plan-management`,
+        },
+      });
+    }
+
+    return updatedPlan;
   }
 
   async remove(slug: string, req: Request) {

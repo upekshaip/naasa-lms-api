@@ -2,6 +2,8 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../../database/database.service.js';
 import { Request } from 'express';
 import { QueryTeacherPricePlansDto } from '../dto/query-teacher-price-plans.dto.js';
+import { QueryAdminPricePlansDto } from '../dto/query-admin-price-plans.dto.js';
+import { Prisma } from '../../../../generated/prisma/client.js';
 
 @Injectable()
 export class FilterPricePlansService {
@@ -94,6 +96,107 @@ export class FilterPricePlansService {
     });
 
     return allPlans;
+  }
+
+  /**
+   * Admin: paginated price plans across all teachers, enriched with teacher info,
+   * linked classes, the approving admin, total enrollments and total revenue.
+   * Supports search (plan or teacher name) and approval-state filtering.
+   * Used by the admin price-plan-management page (approval workflow).
+   */
+  async getAllPricePlansGlobalForAdmin(
+    req: Request,
+    query: QueryAdminPricePlansDto,
+  ) {
+    if (!req.isAdmin) {
+      throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
+    }
+
+    const page = Number(query.page) || 1;
+    const limit = Number(query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const search = query.search?.trim();
+
+    const where: Prisma.ClassPricePlanWhereInput = {};
+    if (query.approval) where.isAdminApproved = query.approval;
+    if (query.teacherId) where.teacherId = Number(query.teacherId);
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        {
+          teacher: {
+            user: { name: { contains: search, mode: 'insensitive' } },
+          },
+        },
+      ];
+    }
+
+    const [plans, filteredTotal, total, pending, approved, rejected] =
+      await Promise.all([
+        this.db.classPricePlan.findMany({
+          where,
+          skip: offset,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            teacher: { select: { user: { select: { name: true } } } },
+            approvedByAdmin: { select: { user: { select: { name: true } } } },
+            classes: {
+              select: { class: { select: { name: true, slug: true } } },
+            },
+            _count: { select: { classEnrollments: true } },
+          },
+        }),
+        this.db.classPricePlan.count({ where }),
+        this.db.classPricePlan.count(),
+        this.db.classPricePlan.count({ where: { isAdminApproved: 'pending' } }),
+        this.db.classPricePlan.count({
+          where: { isAdminApproved: 'approved' },
+        }),
+        this.db.classPricePlan.count({
+          where: { isAdminApproved: 'rejected' },
+        }),
+      ]);
+
+    // Revenue only for the plans on this page
+    const planIds = plans.map((p) => p.id);
+    const revenueGroups = planIds.length
+      ? await this.db.classEnrollment.groupBy({
+          by: ['classPricePlanId'],
+          _sum: { purchasedAmount: true },
+          where: { classPricePlanId: { in: planIds } },
+        })
+      : [];
+    const revenueMap = new Map(
+      revenueGroups.map((g) => [
+        g.classPricePlanId,
+        g._sum.purchasedAmount || 0,
+      ]),
+    );
+
+    const data = plans.map((plan) => ({
+      ...plan,
+      enrollmentCount: plan._count.classEnrollments,
+      revenue: revenueMap.get(plan.id) || 0,
+    }));
+
+    const totalPages = Math.ceil(filteredTotal / limit);
+
+    return {
+      data,
+      counts: { total, pending, approved, rejected },
+      pagination: {
+        page,
+        limit,
+        offset,
+        totalPages,
+        filteredTotal,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+        nextPage: page < totalPages ? page + 1 : null,
+        prevPage: page > 1 ? page - 1 : null,
+      },
+    };
   }
 
   async getAllPricePlansforAdmin(req: Request, teacherId: number) {

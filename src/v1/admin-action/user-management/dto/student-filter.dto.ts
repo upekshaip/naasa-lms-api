@@ -44,4 +44,10 @@ export class UserFilterDto {
     message: 'userType must be one of: student, teacher, admin',
   })
   userType?: string = 'student';
+
+  // only users who joined within the last N days (new-users view)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  joinedWithinDays?: number;
 }
